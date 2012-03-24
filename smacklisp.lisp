@@ -74,6 +74,7 @@
 (defun interp-toplevel (x &key timeout)
   (unless (smackprop-p t 'global-val)
     (init-smack-interp))
+  (set-internal-var 'call-depth 0)
   (trivial-timeout:with-timeout (timeout)
     (let ((env (extend-env '(-) (list x) nil)))
       (let ((vals (multiple-value-list (interp x env nil))))
@@ -352,12 +353,19 @@
   
 
 (defun apply-function (fn args env fenv)
-  (cond ((symbolp fn)
-         (apply (get-func fn fenv) args))
-        ((and (consp fn) (eq (first fn) 'lambda))
-         (apply (interp fn env fenv)
-                args))
-        (t (error "Illegal function call: (~a ...)" fn))))
+  (let ((func (cond ((symbolp fn)
+                     (get-func fn fenv))
+                    ((and (consp fn) (eq (first fn) 'lambda))
+                     (interp fn env fenv))
+                    (t (error "Illegal function call: (~a ...)" fn))))
+        (depth (get-internal-var 'call-depth))
+        (max-depth (get-internal-var 'max-call-depth)))
+    (when (>= depth max-depth)
+      (error "Stack Overflow in Call to Function: (~a ...)" fn))
+    (set-internal-var 'call-depth (1+ depth))
+    (unwind-protect 
+         (apply func args)
+      (set-internal-var 'call-depth depth))))
 
 ;; returns a list of primary return values
 (defun interp-list (exps env fenv)
@@ -392,13 +400,14 @@
       (error "~a is a constant and can not be set." var))
   (set-smackprop var 'global-val val))
 
+(defun set-internal-var (var val)
+  (set-smackprop var 'internal-val val))
+
 (defun smack-constantp (symbol)
   (get-smackprop symbol 'constant))
 
-(defun get-global-var (var)
-  (unless (smack-boundp var) 
-    (error "Unbound smacklisp variable: ~a" var))
-  (get-smackprop var 'global-val))
+(defun get-internal-var (var)
+  (get-smackprop var 'internal-val))
 
 (defun set-func (var val env)
   "Set a variable to a value, in the given or global environment."
@@ -650,7 +659,7 @@
 
 
 (defparameter *smack-constants*
-  '(t nil pi
+  '(
     ARRAY-DIMENSION-LIMIT ARRAY-RANK-LIMIT ARRAY-TOTAL-SIZE-LIMIT BOOLE-1 BOOLE-2
     BOOLE-AND BOOLE-ANDC1 BOOLE-ANDC2 BOOLE-C1 BOOLE-C2 BOOLE-CLR BOOLE-EQV
     BOOLE-IOR BOOLE-NAND BOOLE-NOR BOOLE-ORC1 BOOLE-ORC2 BOOLE-SET BOOLE-XOR
@@ -681,7 +690,8 @@
   ;; define macros
   (initialize-system-macros)
   (initialize-system-defsetfs)
-  (initialize-global-vars))
+  (initialize-global-vars)
+  (initialize-internal-vars))
 
 (defun initialize-global-vars ()
   (set-global-var '*** nil)
@@ -694,6 +704,10 @@
   (set-global-var '// nil)
   (set-global-var '/ nil)
   (set-global-var '- nil))
+
+(defun initialize-internal-vars ()
+  (set-internal-var 'call-depth 0)
+  (set-internal-var 'max-call-depth (expt 2 10)))
 
 
 (defun link-smack-cl-function (fname &optional cl-name)
