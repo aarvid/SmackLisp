@@ -4,10 +4,12 @@
 
 ;;; "smacklisp" goes here. Hacks and glory await!
 
-(defun smack-lisp-implementation-type ()
+(defun smack-lisp-implementation-type (denv)
+  (declare (ignore denv))
   "SmackLisp")
 
-(defun smack-lisp-implementation-version ()
+(defun smack-lisp-implementation-version (denv)
+  (declare (ignore denv))
   "0.0.01")
 
 
@@ -15,6 +17,24 @@
   (make-hash-table ))
 
 (defvar *max-interp-depth* 10000)
+
+(defun sharp-illegal (stream sub-char arg)
+  (declare (ignore stream arg))
+  (error  "illegal sharp macro character: ~S" sub-char))
+
+(defreadtable smack-readtable
+  (:merge :standard)
+  (:dispatch-macro-char #\# #\. #'sharp-illegal)
+  (:dispatch-macro-char #\# #\+ #'sharp-illegal)
+  (:dispatch-macro-char #\# #\- #'sharp-illegal)
+  (:dispatch-macro-char #\# #\= #'sharp-illegal)
+  (:dispatch-macro-char #\# #\# #'sharp-illegal))
+
+
+
+(defmacro with-smack-readtable (() &body body)
+  `(with-named-readtable ('smack-readtable)
+    ,@body))
 
 (defmacro get-smackprop (symbol prop)
   `(getf (gethash ,symbol *smack-symbols*) ,prop))
@@ -33,42 +53,43 @@
         (get-smackproperties ,symbol (list ,prop))
         t))
 
-(defun interp (x &optional env fenv)
+(defun interp (x &optional env fenv denv)
   "Interpret (evaluate) the expression x in the variable environment env
    and function environment fenv"
   (cond
     ((keywordp x) x)
-    ((symbolp x) (get-var x env))    
+    ((symbolp x) (get-var x env denv))    
     ((atom x) x)
     ((smack-macro (first x))              
-     (interp (smack-macro-expand x) env fenv))
+     (interp (smack-macro-expand x) env fenv denv))
     (t (case (first x)
          (quote    (second x))
-         (progn    (smack-progn (rest x) env fenv))
-         (setq     (smack-setq x env fenv))
-         (if       (if (interp (second x) env fenv)
-                       (interp (third x) env fenv)
-                       (interp (fourth x) env fenv)))
+         (progn    (smack-progn (rest x) env fenv denv))
+         (setq     (smack-setq x env fenv denv))
+         (if       (if (interp (second x) env fenv denv)
+                       (interp (third x) env fenv denv)
+                       (interp (fourth x) env fenv denv)))
          (lambda   (make-function
                     (second x) (cddr x) env fenv))
          (defun    (set-global-func ;; should be macro
                     (second x)
                     (make-function (third x) (cdddr x) env fenv)))
-         (function (smack-function (second x) env fenv))
-         (flet     (smack-flet (second x) (cddr x) env fenv))
-         (labels   (smack-labels (second x) (cddr x) env fenv))
+         (function (smack-function (second x) env fenv denv))
+         (flet     (smack-flet (second x) (cddr x) env fenv denv))
+         (labels   (smack-labels (second x) (cddr x) env fenv denv))
          (multiple-value-call
-             (smack-multiple-value-call (second x) (cddr x) env fenv))
-         (block    (smack-block (second x) (cddr x) env fenv))
+             (smack-multiple-value-call (second x) (cddr x) env fenv denv))
+         (block    (smack-block (second x) (cddr x) env fenv denv))
          (return-from
-          (smack-return-from (second x) (third x) env fenv))
-         (tagbody  (smack-tagbody (rest x) env fenv))
-         (go       (smack-go (rest x) env fenv))
+          (smack-return-from (second x) (third x) env fenv denv))
+         (tagbody  (smack-tagbody (rest x) env fenv denv))
+         (go       (smack-go (rest x) env fenv denv))
           
          (t        (apply-function (first x)
-                                   (interp-list (rest x) env fenv)
+                                   (interp-list (rest x) env fenv denv)
                                    env
-                                   fenv))))))
+                                   fenv
+                                   denv))))))
 
 
 (defun interp-toplevel (x &key timeout)
@@ -77,7 +98,7 @@
   (set-internal-var 'call-depth 0)
   (trivial-timeout:with-timeout (timeout)
     (let ((env (extend-env '(-) (list x) nil)))
-      (let ((vals (multiple-value-list (interp x env nil))))
+      (let ((vals (multiple-value-list (interp x env nil nil))))
         (set-global-var '*** (get-global-var '**))
         (set-global-var '** (get-global-var '*))
         (set-global-var '* (car vals))
@@ -111,35 +132,68 @@
    (interp-toplevel x :timeout timeout)))
  
 
+
+(defun smack-string-simple (s &key timeout)
+  "takes a string, reads it, interprets it and converts the result to a string"
+  (with-output-to-string (ss)
+    (with-smack-readtable ()
+      (let* ((*standard-output* ss)
+             (results (multiple-value-list
+                       (interp-toplevel (read-from-string s)
+                                        :timeout timeout))))
+        (mapcar #'fresh-print results)))))
+
+
 (defun smack-string (s &key timeout)
   "takes a string, reads it, interprets it and converts the result to a string"
   (smack-error-handle
-   (with-output-to-string (ss)
-     (let* ((*standard-output* ss)
-            (results (multiple-value-list
-                         (interp-toplevel (read-from-string s)
-                                          :timeout timeout))))
-       (mapcar #'fresh-print results)))))
+   (smack-string-simple s :timeout timeout)))
+
+(defun smack-string-values (s &key timeout)
+  "takes a string, reads it, interprets it and converts the result to a string"
+  (let ((value-str (make-adjustable-string 0))
+        (output-str (make-adjustable-string 0))
+        (success-p nil))
+    (with-output-to-string (sv value-str)
+      (with-output-to-string (so output-str)
+        (with-smack-readtable ()
+          (handler-case
+              (let* ((*standard-output* so)
+                     (results (multiple-value-list
+                               (interp-toplevel (read-from-string s)
+                                                :timeout timeout))))
+                (let ((*standard-output* sv))
+                  (mapcar #'fresh-print results))
+                (setf success-p t))
+            (simple-condition (condition)
+              (apply 'format sv
+                     (simple-condition-format-control condition)
+                     (simple-condition-format-arguments condition)))
+            (serious-condition (condition)
+              (format sv "~A" condition))))))
+    (values value-str output-str success-p)))
 
 (defun smack (&key timeout)
   "A Smacklisp read-eval-print loop (using interp)"
-  (loop
-    (format t "~&==> ")
+  (with-smack-readtable ()
+    (loop
+      (clear-input )
+      (format t "~&==> ")
 
-    (when (eq :smack-quit
-              (first (mapcar #'fresh-print
-                             (multiple-value-list
-                                 (smack-error-handle
-                                  (interp-toplevel (read)
-                                                   :timeout timeout))))))
-      (return "Bye"))))
+      (when (eq :smack-quit
+                (first (mapcar #'fresh-print
+                               (multiple-value-list
+                                (smack-error-handle
+                                 (interp-toplevel (read)
+                                                  :timeout timeout))))))
+        (return "Bye")))))
 
 
 (defmacro fresh-smack (&rest x)
   `(let ((*smack-symbols* (make-hash-table)))
      (smack ,@x)))
 
-(defun smack-tagbody (body env fenv)
+(defun smack-tagbody (body env fenv denv)
   (let ((goto nil))
     (tagbody top
        (setq goto
@@ -149,15 +203,15 @@
                    (if (symbolp x)
                        (setf evalp (or evalp (eql x goto)))
                        (when evalp
-                         (interp x env fenv))))
+                         (interp x env fenv denv))))
                  nil)))
        (when goto
          (unless (member goto body)
            (throw 'tagbody-go goto))
          (go top)))))
           
-(defun smack-go (body env fenv)
-  (declare (ignore env fenv))
+(defun smack-go (body env fenv denv)
+  (declare (ignore env fenv denv))
   (unless (singlep body)
     (error "Multiple arguments to GO"))
   (let ((tag (car body)))
@@ -169,44 +223,38 @@
 
 
 ;; perhaps block environment?
-(defun smack-block (name body env fenv)
+(defun smack-block (name body env fenv denv)
   (let ((tag (gensym (string name))))
     (push tag (get-smackprop name 'block-tags))
     (unwind-protect 
-         (catch tag (interp (cons 'progn body) env fenv))
+         (catch tag (interp (cons 'progn body) env fenv denv))
       (pop (get-smackprop name 'block-tags)))))
 
 
-(defun smack-return-from (name exp env fenv)
+(defun smack-return-from (name exp env fenv denv)
   (let ((tag (car (get-smackprop name 'block-tags))))
     (unless tag
       (error "unknown block tag: ~a " name))
-      (throw tag (interp exp env fenv))))
+      (throw tag (interp exp env fenv denv))))
 
-(defun smack-multiple-value-call (function-form forms env fenv)
-  (apply (interp function-form env fenv)
+(defun smack-multiple-value-call (function-form forms env fenv denv)
+  (apply (interp function-form env fenv denv)
          (mapcan #'(lambda (x)
-                     (multiple-value-list (interp x env fenv)))
+                     (multiple-value-list (interp x env fenv denv)))
                  forms)))
 
 
   
-(defun smack-setq (x env fenv)
+(defun smack-setq (x env fenv denv)
   (when (evenp (length x))
     (error "odd number of args to SETQ:~% ~S" x))
   (let ((result nil))
     (doplist (var val (cdr x) result)
-      (setf result (set-var var (interp val env fenv) env)))))
+      (setf result (set-var var (interp val env fenv denv) env denv)))))
   
-;;  (do* ((var (second x) (first y))
-;;        (val (third x) (second y))
-;;        (y  (cdddr x) (cddr y))
-;;        (result (set-var var (interp val env fenv) env)
-;;                (set-var var (interp val env fenv) env)))
-;;       ((null y) result)))
-;;(setq   (set-var (second x) (interp (third x) env fenv) env))
   
-(defun smack-function (arg env fenv)
+(defun smack-function (arg env fenv denv)
+  (declare (ignore denv))
   (cond ((symbolp arg)
          (get-func arg fenv))
         ((and (consp arg)
@@ -215,7 +263,7 @@
                         (cddr arg)
                         env fenv))))
 
-(defun smack-flet (fns body env fenv)
+(defun smack-flet (fns body env fenv denv)
   (smack-progn body
                env
                (extend-env (mapcar #'first fns)
@@ -225,9 +273,10 @@
                                                       env
                                                       fenv))
                                    fns)
-                           fenv)))
+                           fenv)
+               denv))
 
-(defun smack-labels (fns body env fenv)
+(defun smack-labels (fns body env fenv denv)
   (let ((new-fenv (extend-env (mapcar #'first fns)
                               (mapcar #'(lambda (def) def) fns)
                               fenv)))
@@ -239,7 +288,7 @@
                                        new-fenv)
                         new-fenv))
           fns)
-    (smack-progn body env new-fenv)))
+    (smack-progn body env new-fenv denv)))
                         
 (defun force-keyword (S)
   "Make the symbol or string S into a keyword symbol."
@@ -310,18 +359,22 @@
   (let ((bcode (maybe-add 'progn code)))
     (multiple-value-bind (required optional rest keyword)
         (smack-parse-parms parms)
-      #'(lambda (&rest args)
+      #'(lambda (denv &rest args)
           (dolist (p required)
             (when (null args)
               (error "invalid number of arguments"))
-            (setq env (extend-env-1 p (pop args) env)))
+            (if (special-var-p p denv)
+                (setq denv (extend-env-1 p (pop args) denv))
+                (setq env (extend-env-1 p (pop args) env))))
           (dolist (p optional)
             (destructuring-bind (var default supplied-p-var) p
               (let ((supplied-p (consp args))
                     (val (cond ((consp args) (pop args))
                                (default (interp default env fenv))
                                (t nil))))
-                (setq env (extend-env-1 var val env))
+                (if (special-var-p var denv)
+                    (setq denv (extend-env-1 var val denv))
+                    (setq env (extend-env-1 var val env)))
                 (when supplied-p-var
                   (setq env (extend-env-1 supplied-p-var supplied-p env))))))
           (when (and args (null rest) (null keyword))
@@ -341,10 +394,12 @@
                        (val (cond (supplied-p (getf args ky))
                                   (default (interp default env fenv))
                                   (t nil))))
-                  (setq env (extend-env-1 var val env))
+                  (if (special-var-p var denv)
+                      (setq denv (extend-env-1 var val denv))
+                      (setq env (extend-env-1 var val env)))
                   (when supplied-p-var
                     (setq env (extend-env-1 supplied-p-var supplied-p env)))))))
-          (interp bcode env fenv)))))
+          (interp bcode env fenv denv)))))
 
 ;; (defun make-function (parms code env fenv)
 ;;   (let ((bcode (maybe-add 'progn code)))
@@ -352,11 +407,11 @@
 ;;         (interp bcode (extend-env parms args env) fenv))))
   
 
-(defun apply-function (fn args env fenv)
+(defun apply-function (fn args env fenv denv)
   (let ((func (cond ((symbolp fn)
                      (get-func fn fenv))
                     ((and (consp fn) (eq (first fn) 'lambda))
-                     (interp fn env fenv))
+                     (interp fn env fenv denv))
                     (t (error "Illegal function call: (~a ...)" fn))))
         (depth (get-internal-var 'call-depth))
         (max-depth (get-internal-var 'max-call-depth)))
@@ -364,53 +419,88 @@
       (error "Stack Overflow in Call to Function: (~a ...)" fn))
     (set-internal-var 'call-depth (1+ depth))
     (unwind-protect 
-         (apply func args)
+         (apply func denv args)
       (set-internal-var 'call-depth depth))))
 
+(defun smack-apply (denv func arg &rest arguments)
+  (let ((depth (get-internal-var 'call-depth))
+        (max-depth (get-internal-var 'max-call-depth)))
+    (when (>= depth max-depth)
+      (error "Stack Overflow in Call to anonymous Function"))
+    (set-internal-var 'call-depth (1+ depth))
+    (unwind-protect 
+         (cond ((atom arguments)
+                (apply func denv arg))
+               ((atom (cdr arguments))
+                (apply func denv (cons arg (car arguments))))
+               (t (do* ((a1 arguments a2)
+                        (a2 (cdr arguments) (cdr a2)))
+                       ((atom (cdr a2))
+                        (rplacd a1 (car a2))
+                        (apply func denv (cons arg arguments))))))
+      (set-internal-var 'call-depth depth))))
+
+
 ;; returns a list of primary return values
-(defun interp-list (exps env fenv)
-  (mapcar #'(lambda (v) (interp v env fenv)) exps))
+(defun interp-list (exps env fenv denv)
+  (mapcar #'(lambda (v) (interp v env fenv denv)) exps))
   
-(defun smack-progn (exps env fenv)
+(defun smack-progn (exps env fenv denv)
   (let ((result nil))
     (dolist (x exps (values-list result))
-      (setq result (multiple-value-list (interp x env fenv))))))
-;;  (values-list
-;;   (lastcar (mapcar #'(lambda (v) (multiple-value-list (interp v env fenv)))
-;;                    exps))))
+      (setq result (multiple-value-list (interp x env fenv denv))))))
+
  
+(defun extend-env (vars vals env)
+  "Add some variables and values to an environment."
+  (nconc (mapcar #'list vars vals) env))
 
+(defun extend-env-1 (var val env)
+  "Add one variable and value to an environment."
+  (push (list var val) env))
 
-(defun set-var (var val env)
-  "Set a variable to a value, in the given or global environment."
+(defun set-var (var val env denv)
+  "Set a variable to a value, in the given, dynamic or global environment."
   (if (assoc var env)
       (setf (second (assoc var env)) val)
-      (set-global-var var val))
+      (if (assoc var denv)
+          (setf (second (assoc var denv)) val)
+          (set-global-var var val)))
   val)
                      
                  
-(defun get-var (var env)
-  "Get the value of a variable, from the given or global environment."
+(defun get-var (var env denv)
+  "Get the value of a variable, from the given, dynamic or global environment."
     (if (assoc var env)
         (second (assoc var env))
-        (get-global-var var)))
+        (if (assoc var denv)
+            (second (assoc var denv))
+            (get-global-var var))))
+
+(defun special-var-p (var denv)
+  (or (assoc var denv)
+      (smackprop-p var 'global-val)))
 
 (defun set-global-var (var val)
-  (if (smack-constantp var)
+  (when (get-smackprop var 'constant)
       (error "~a is a constant and can not be set." var))
   (set-smackprop var 'global-val val))
 
 (defun set-internal-var (var val)
   (set-smackprop var 'internal-val val))
 
-(defun smack-constantp (symbol)
-  (get-smackprop symbol 'constant))
+
+
+(defun get-global-var (var)
+  (unless (smackprop-p var 'global-val) 
+    (error "Unbound smacklisp variable: ~a" var))
+  (get-smackprop var 'global-val))
 
 (defun get-internal-var (var)
   (get-smackprop var 'internal-val))
 
 (defun set-func (var val env)
-  "Set a variable to a value, in the given or global environment."
+  "Set a function name to a function, in the given or global environment."
   (if (assoc var env)
       (setf (second (assoc var env)) val)
       (set-global-func var val))
@@ -429,64 +519,73 @@
 
 
 (defun get-global-func (symbol)
-  (unless (smack-fboundp symbol) 
+  (unless (smack-fboundp nil symbol) 
     (error "Unbound smacklisp function: ~a" symbol))
   (get-smackprop symbol 'global-func))
 
 
-;;(defmacro defun-smack (parms &rest body)
-;;  `  (set-global-func name
-;;                   (lambda
-(defun smack-quit()
+(defun smack-quit (denv)
+  (declare (ignore denv))
   :smack-quit)
 
-(defun smack-boundp (symbol)
+(defun smack-constantp (denv form)
+  (declare (ignore denv))
+  (typecase form
+      ;; copied from sbcl and altered
+      (symbol
+       (get-smackprop form 'constant))
+      (list
+       (eq (car form) 'quote))
+      (t t)))
+
+(defun smack-boundp (denv symbol)
+  (declare (ignore denv))
   (smackprop-p symbol 'global-val))
       
 
-(defun smack-fboundp (symbol)
+(defun smack-fboundp (denv symbol)
+  (declare (ignore denv))
   (smackprop-p symbol 'global-func))
       
 
-(defun smack-fdefinition (symbol)
-  (unless (smack-fboundp symbol)
+(defun smack-fdefinition (denv symbol)
+  (unless (smack-fboundp denv symbol)
     (error "Unbound global smacklisp function: ~a" symbol))
   (get-global-func symbol))
 
-(defun smack-fmakunbound (symbol)
+(defun smack-fmakunbound (denv symbol)
+  (declare (ignore denv))
   (rem-smackprop symbol 'global-func))
   
 
-(defun smack-funcall (fn &rest args)
-  (apply fn args))
+(defun smack-funcall (denv fn &rest args)
+  (smack-apply denv fn args))
 
-(defun smack-defconstant (symbol val)
+(defun smack-defconstant (denv symbol val)
+  (declare (ignore denv))
   (rem-smackprop symbol 'constant)
   (set-global-var symbol val)
-  (set-smackprop symbol 'constant t))
+  (set-smackprop symbol 'constant t)
+  symbol)
 
-(defun smack-defun (symbol parms body env fenv)
-  (set-global-func symbol (make-function parms body env fenv)))
   
-(defun extend-env (vars vals env)
-  "Add some variables and values to an environment."
-  (nconc (mapcar #'list vars vals) env))
 
-(defun extend-env-1 (var val env)
-  "Add one variable and value to an environment."
-  (push (list var val) env))
 
-(defun smack-symbol-plist (symbol)
+(defun smack-symbol-plist (denv symbol)
+  (declare (ignore denv))
   (get-smackprop symbol 'symbol-plist))
 
-(defun smack-get (symbol indicator &optional default)
- (getf (get-smackprop symbol 'symbol-plist) indicator default))
+(defun smack-get (denv symbol indicator &optional default)
+  (declare (ignore denv))
+  (getf (get-smackprop symbol 'symbol-plist) indicator default))
 
-(defun smack-put-prop (symbol indicator value)
+(defun smack-put-prop (denv symbol indicator value)
+  (declare (ignore denv))
   (setf (getf (get-smackprop symbol 'symbol-plist) indicator)
         value))
 
-(defun smack-putf (plist indicator value)
+(defun smack-putf (denv plist indicator value)
+  (declare (ignore denv))
   (setf (getf plist indicator) value)
   plist)
 
@@ -507,8 +606,8 @@
      (make-function (make-parms slots) (make-body imake slots) nil nil))
     (link-smack-cl-function imake imake)))
 
-(defun  smack-defstruct (name options slots)
-  (declare (ignore options))
+(defun  smack-defstruct (denv name options slots)
+  (declare (ignore options denv))
   (let* ((simple-slots (mapcar #'car slots))
          (internal-name (gensym (string name))))
     (eval `(defstruct ,internal-name ,@simple-slots))
@@ -548,12 +647,13 @@
     eq equal eql
     not notany some every notevery 
     identity
-    apply complement constantly
+    complement constantly
     functionp
     values values-list
     (fboundp smack-fboundp)
     (fdefinition smack-fdefinition)
     (fmakunbound smack-fmakunbound)
+    (apply smack-apply)
     (funcall smack-funcall)
     
     ;; structures
@@ -641,7 +741,7 @@
     make-hash-table maphash remhash sxhash
     
     ;; reader
-    read
+    ;; (read smack-read)
     ;; printer
     prin1 princ terpri print    
     ;; system construction
@@ -709,19 +809,26 @@
   (set-internal-var 'call-depth 0)
   (set-internal-var 'max-call-depth (expt 2 10)))
 
-
+;; if fname is a list then it is assumed that second element
+;;    refers to a smackified function whose first parameter
+;;    is the dynamic environment.
 (defun link-smack-cl-function (fname &optional cl-name)
   "Define a Smacklisp function as a corresponding CL function."
   (let ((smack-name (ensure-car fname))
         (cl-name (if (listp fname)
                      (second fname)
                      (if cl-name cl-name fname))))
-    (set-global-func smack-name (symbol-function cl-name))))
+    (set-global-func smack-name
+                     (if (listp fname)
+                         (symbol-function cl-name)
+                         (lambda (denv &rest args)
+                           (declare (ignore denv))
+                           (apply (symbol-function cl-name) args))))))
 
 (defun init-smack-constant (c)
   (if (listp c)
-      (smack-defconstant (first c) (symbol-value (second c)))
-      (smack-defconstant c (symbol-value c))))
+      (smack-defconstant nil (first c) (symbol-value (second c)))
+      (smack-defconstant nil c (symbol-value c))))
 
 (defun fresh-print (object &optional stream)
   (let ((stream (cond ((null stream) *standard-output*)
@@ -745,7 +852,7 @@
   t if exps is nil, exps if there is only one,
   and (and exp1 exp2...) if there are several exps."
   (cond ((null exps) if-nil)
-        ((arv:singlep exps) (first exps))
+        ((singlep exps) (first exps))
         (t (cons op exps))))
 
 
@@ -754,10 +861,11 @@
 (defun load-stream (stream)
   (unless (smackprop-p t 'global-val)
     (init-smack-interp))
-  (do ((s (read stream nil :eof nil)
-          (read stream nil :eof nil)))
-      ((eq s :eof))
-    (print (interp s nil nil))))
+  (with-smack-readtable ()
+    (do ((s (read stream nil :eof nil)
+            (read stream nil :eof nil)))
+        ((eq s :eof))
+      (print (interp s nil nil)))))
 
 (defun load-string (string)
   (with-input-from-string (stream string)
@@ -776,7 +884,7 @@
 
 
 
-(defun cxxr ()
+#|(defun cxxr ()
   (let ((l nil))
     (do-all-symbols (x) 
       (when (and (fboundp x)
@@ -790,6 +898,6 @@
                   (string x)))
         (push x l)))
     (stable-sort (sort (remove-duplicates l) #'string< )
-                 #'< :key (compose #'length #'string))))
+                 #'< :key (compose #'length #'string))))|#
   
   
