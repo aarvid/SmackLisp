@@ -6,8 +6,9 @@
                #:metabang-bind
                #:cl-ppcre
                #:trivial-timeout
-               #:arvid-utils)
+               #:named-readtables)
   :components ((:file "package")
+               (:file "utils")
                (:file "smacklisp")
                (:file "macros")
                (:file "setf")
