@@ -83,8 +83,11 @@
                   clauses)))))
 
   (def-smack-macro defvar (name &rest body)
-    (if (and (atom name) (not (boundp name)))
-        `(progn (setf ,name . ,body) ',name)
+    (if (atom name)
+        `(progn
+           (unless (boundp ',name)
+             (setf ,name . ,body))
+           ',name)
         nil))
 
   (def-smack-macro defparameter (name &rest body)
