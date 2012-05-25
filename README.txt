@@ -264,7 +264,7 @@ Currently Lacks:
     Tail-recursion 
     Macros (Internal exists, user not yet) 
     Unit tests
-    lexical scoping
+    configurable
 
   Hope to implement
     Documentation strings 
