@@ -8,5 +8,6 @@
            smack-string
            smack-string-values
            *smack-symbols*
+           init-smack-interp
             ))
 

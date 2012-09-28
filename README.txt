@@ -97,21 +97,26 @@ Currently Implemented:
     -- adjoin
     -- append 
     -- atom
+    -- butlast, nbutlast
     -- car (setf)
     -- cdr (setf)
     -- cxxr (setf) 
     -- cons 
     -- consp 
-    -- copy-alist
     -- copy-list
-    -- copy-tree
     -- first, second, ... tenth (setf)
     -- last
+    -- ldiff
     -- list
+    -- list*
     -- list-length
     -- listp
+    -- make-list
     -- mapc mapcan mapcar mapcon mapl maplist
     -- member
+    -- member-if
+    -- nconc
+    -- nreconc
     -- nth (setf)
     -- nthcdr
     -- null
@@ -119,8 +124,40 @@ Currently Implemented:
     -- push
     -- pushnew
     -- rest (setf)
+    -- revappend
     -- rplaca
     -- rplacd
+
+  Conses - Associated Lists
+    -- acons
+    -- assoc
+    -- assoc-if
+    -- copy-alist
+    -- pairlis
+    -- rassoc
+    -- rassoc-if
+
+  Conses - Sets
+    -- subsetp
+    -- intersection
+    -- nintersection
+    -- set-difference
+    -- nset-difference 
+    -- set-exclusive-or
+    -- nset-exclusive-or
+    -- union 
+    -- nunion
+
+  Conses - Trees 
+    -- copy-tree
+    -- tree-equal
+    -- subst
+    -- nsubst
+    -- subst
+    -- nsubst
+    -- tree
+    -- sublis
+    -- nsublis
 
   Arrays
     -- adjustable-array-p
@@ -180,7 +217,6 @@ Currently Implemented:
     -- copy-seq
     -- count
     -- count-if
-    -- count-if-not
     -- elt
     -- fill
     -- find

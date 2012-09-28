@@ -18,6 +18,9 @@
 
 (defvar *max-interp-depth* 10000)
 
+(defvar *smack-random-state*
+  (make-random-state t))
+
 (defun sharp-illegal (stream sub-char arg)
   (declare (ignore stream arg))
   (error  "illegal sharp macro character: ~S" sub-char))
@@ -52,6 +55,14 @@
   `(and (symbolp ,symbol)
         (get-smackproperties ,symbol (list ,prop))
         t))
+
+(defmacro sl-read (&rest x)
+  `(let ((*package* ,(find-package :smacklisp)))
+     (read ,@x)))
+
+(defmacro sl-read-from-string (&rest x)
+  `(let ((*package* ,(find-package :smacklisp)))
+     (read-from-string ,@x)))
 
 (defun interp (x &optional env fenv denv)
   "Interpret (evaluate) the expression x in the variable environment env
@@ -111,9 +122,7 @@
         (values-list vals)))))
 
 
-(defun foo (s)
-  (cond ((= s 1) 1) (t (foo (1- s)
-                            ))))
+
   
 
 (defmacro smack-error-handle (&rest body)
@@ -139,7 +148,7 @@
     (with-smack-readtable ()
       (let* ((*standard-output* ss)
              (results (multiple-value-list
-                       (interp-toplevel (read-from-string s)
+                       (interp-toplevel (sl-read-from-string s)
                                         :timeout timeout))))
         (mapcar #'fresh-print results)))))
 
@@ -160,7 +169,7 @@
           (handler-case
               (let* ((*standard-output* so)
                      (results (multiple-value-list
-                               (interp-toplevel (read-from-string s)
+                               (interp-toplevel (sl-read-from-string s)
                                                 :timeout timeout))))
                 (let ((*standard-output* sv))
                   (mapcar #'fresh-print results))
@@ -184,7 +193,7 @@
                 (first (mapcar #'fresh-print
                                (multiple-value-list
                                 (smack-error-handle
-                                 (interp-toplevel (read)
+                                 (interp-toplevel (sl-read)
                                                   :timeout timeout))))))
         (return "Bye")))))
 
@@ -239,6 +248,7 @@
 
 (defun smack-multiple-value-call (function-form forms env fenv denv)
   (apply (interp function-form env fenv denv)
+         denv
          (mapcan #'(lambda (x)
                      (multiple-value-list (interp x env fenv denv)))
                  forms)))
@@ -310,13 +320,13 @@
   (unless (keywordp x)
     (error "~A is not a keyword: ~S" why x)))
 
-(defun smack-parse-parms (parms)
+(defun smack-parse-lambda-list (lambda-list)
   (let ((required nil)
         (optional nil)
         (rest nil)
         (keyword nil)
         (state '&required))
-    (dolist (p parms)
+    (dolist (p lambda-list)
       (case state
         (&required (if (member p '(&optional &key &rest))
                        (setq state p)
@@ -358,7 +368,7 @@
 (defun make-function (parms code env fenv)
   (let ((bcode (maybe-add 'progn code)))
     (multiple-value-bind (required optional rest keyword)
-        (smack-parse-parms parms)
+        (smack-parse-lambda-list parms)
       #'(lambda (denv &rest args)
           (dolist (p required)
             (when (null args)
@@ -569,7 +579,9 @@
   symbol)
 
   
-
+(defun smack-random (denv limit)
+  (declare (ignore denv))
+  (random limit *smack-random-state*))
 
 (defun smack-symbol-plist (denv symbol)
   (declare (ignore denv))
@@ -638,160 +650,31 @@
 
 
 
-(defparameter *smack-procs*
-  '(
-    ;; Evaluation and Compilation
-    (constantp smack-constantp)
 
-    ;; Control and data flow    
-    eq equal eql
-    not notany some every notevery 
-    identity
-    complement constantly
-    functionp
-    values values-list
-    (fboundp smack-fboundp)
-    (fdefinition smack-fdefinition)
-    (fmakunbound smack-fmakunbound)
-    (apply smack-apply)
-    (funcall smack-funcall)
-    
-    ;; structures
-    copy-structure
-    
-    ;; symbols
-    keywordp  ;; ??
-    (boundp smack-boundp)
+(defun load-stream (stream &key print)
+  (unless (smackprop-p t 'global-val)
+    (init-smack-interp))
+  (with-smack-readtable ()
+    (do ((s (sl-read stream nil :eof nil)
+            (sl-read stream nil :eof nil)))
+        ((eq s :eof))
+      (let ((result (interp s nil nil)))
+        (when print
+          (print result))))))
 
-    ;; numbers
-    + - * / = < > <= >= /=
-    abs acos acosh ash asin asinh atan atanh
-    boole byte ceiling cis complex complexp
-    conjugate cos cosh decode-float
-    denominator evenp exp expt fceiling ffloor float floatp
-    float-sign floor fround ftruncate gcd imagpart integerp
-    isqrt lcm log max min minusp mod numberp numerator oddp
-    parse-integer phase plusp rational rationalize rationalp
-    realp realpart rem round signum sin sinh sqrt tan tanh
-    truncate zerop 1+ 1-
+(defun load-string (string &key print)
+  (with-input-from-string (stream string)
+    (load-stream stream :print print)))
 
-    ;; characters
-    alpha-char-p both-case-p alphanumericp
-    character characterp char-code char-downcase
-    char-greaterp char-equal char-int char-lessp
-    char-name char-not-greaterp char-not-equal
-    char-not-lessp char-upcase char= char/=
-    char> char< char>= char<= code-char
-    digit-char graphic-char-p lower-case-p
-    name-char standard-char-p upper-case-p
+(defun load-file (file &key print)
+  (with-input-from-file (stream file)
+    (load-stream stream :print print)))
 
-    ;; conses    
-    cons append list member
-    car cdr
-    caar cadr cdar cddr
-    caaar caadr cadar caddr cdaar cdadr cddar cdddr
-    caaaar caaadr caadar caaddr cadaar cadadr caddar cadddr
-    cdaaar cdaadr cdadar cdaddr cddaar cddadr cdddar cddddr
-    first second third fourth fifth sixth seventh eighth ninth tenth
-    rest nthcdr nth last endp
-    consp listp atom null
-    copy-list copy-alist copy-tree
-    list-length adjoin
-    rplaca rplacd
-    mapc mapcan mapcar mapcon mapl maplist
-    assoc acons assoc-if
-    getf get-properties
-    (get smack-get)
-    (symbol-plist smack-symbol-plist)
-    (%sys-put-prop smack-put-prop)
-    (%sys-putf smack-putf)
-    
-    ;; arrays
-    adjustable-array-p adjust-array aref array-dimension array-dimensions
-    array-displacement array-element-type array-has-fill-pointer-p
-    array-in-bounds-p arrayp array-rank array-row-major-index
-    array-total-size make-array row-major-aref simple-vector-p
-    svref vector vectorp vector-pop vector-push vector-push-extend
-    
-    ;; strings
-    char make-string schar simple-string-p string
-    string-capitalize nstring-capitalize
-    string-downcase nstring-downcase
-    string-upcase nstring-upcase
-    string-equal string-greaterp string-left-trim
-    string-lessp string-not-equal string-not-greaterp
-    string-not-lessp stringp string-right-trim
-    string-trim string= string/= string< string>
-    string<= string>=
-    
-    ;; sequences
-    concatenate copy-seq count count-if count-if-not
-    elt fill find find-if length make-sequence
-    map map-into merge mismatch position position-if
-    reduce remove delete
-    remove-duplicates delete-duplicates
-    remove-if delete-if
-    replace reverse nreverse search sort stable-sort
-    subseq substitute nsubstitute substitute-if nsubstitute-if
-    
-    ;; hash tables
-    clrhash gethash hash-table-count hash-table-p
-    hash-table-rehash-size hash-table-rehash-threshold
-    hash-table-size hash-table-test
-    make-hash-table maphash remhash sxhash
-    
-    ;; reader
-    ;; (read smack-read)
-    ;; printer
-    prin1 princ terpri print    
-    ;; system construction
-    (load load-file)
-    ;; environment
-    decode-universal-time encode-universal-time
-    get-decoded-time get-internal-real-time
-    get-universal-time
-    (lisp-implementation-type smack-lisp-implementation-type)
-    (lisp-implementation-version smack-lisp-implementation-version)
-    ;; smacklisp extension
-    (%defconstant smack-defconstant)
-    (%defstruct smack-defstruct)
-    (quit smack-quit)))
+(defun smack-load-file (denv file &key print)
+  (declare (ignore denv))
+  (load-file file :print print))
 
 
-(defparameter *smack-constants*
-  '(
-    ARRAY-DIMENSION-LIMIT ARRAY-RANK-LIMIT ARRAY-TOTAL-SIZE-LIMIT BOOLE-1 BOOLE-2
-    BOOLE-AND BOOLE-ANDC1 BOOLE-ANDC2 BOOLE-C1 BOOLE-C2 BOOLE-CLR BOOLE-EQV
-    BOOLE-IOR BOOLE-NAND BOOLE-NOR BOOLE-ORC1 BOOLE-ORC2 BOOLE-SET BOOLE-XOR
-    CALL-ARGUMENTS-LIMIT CHAR-CODE-LIMIT DOUBLE-FLOAT-EPSILON
-    DOUBLE-FLOAT-NEGATIVE-EPSILON INTERNAL-TIME-UNITS-PER-SECOND
-    LAMBDA-LIST-KEYWORDS LAMBDA-PARAMETERS-LIMIT LEAST-NEGATIVE-DOUBLE-FLOAT
-    LEAST-NEGATIVE-LONG-FLOAT LEAST-NEGATIVE-NORMALIZED-DOUBLE-FLOAT
-    LEAST-NEGATIVE-NORMALIZED-LONG-FLOAT LEAST-NEGATIVE-NORMALIZED-SHORT-FLOAT
-    LEAST-NEGATIVE-NORMALIZED-SINGLE-FLOAT LEAST-NEGATIVE-SHORT-FLOAT
-    LEAST-NEGATIVE-SINGLE-FLOAT LEAST-POSITIVE-DOUBLE-FLOAT
-    LEAST-POSITIVE-LONG-FLOAT LEAST-POSITIVE-NORMALIZED-DOUBLE-FLOAT
-    LEAST-POSITIVE-NORMALIZED-LONG-FLOAT LEAST-POSITIVE-NORMALIZED-SHORT-FLOAT
-    LEAST-POSITIVE-NORMALIZED-SINGLE-FLOAT LEAST-POSITIVE-SHORT-FLOAT
-    LEAST-POSITIVE-SINGLE-FLOAT LONG-FLOAT-EPSILON LONG-FLOAT-NEGATIVE-EPSILON
-    MOST-NEGATIVE-DOUBLE-FLOAT MOST-NEGATIVE-FIXNUM MOST-NEGATIVE-LONG-FLOAT
-    MOST-NEGATIVE-SHORT-FLOAT MOST-NEGATIVE-SINGLE-FLOAT
-    MOST-POSITIVE-DOUBLE-FLOAT MOST-POSITIVE-FIXNUM MOST-POSITIVE-LONG-FLOAT
-    MOST-POSITIVE-SHORT-FLOAT MOST-POSITIVE-SINGLE-FLOAT MULTIPLE-VALUES-LIMIT NIL
-    PI SHORT-FLOAT-EPSILON SHORT-FLOAT-NEGATIVE-EPSILON SINGLE-FLOAT-EPSILON
-    SINGLE-FLOAT-NEGATIVE-EPSILON T))
-
-(defun init-smack-interp ()
-  "Initialize the smacklisp interpreter with some global variables."
-  ;; Define Smacklisp procedures as CL functions:
-  (mapc #'link-smack-cl-function *smack-procs*)
-  ;; Define the `constants'.
-  (mapc #'init-smack-constant *smack-constants*)
-  ;; define macros
-  (initialize-system-macros)
-  (initialize-system-defsetfs)
-  (initialize-global-vars)
-  (initialize-internal-vars))
 
 (defun initialize-global-vars ()
   (set-global-var '*** nil)
@@ -809,21 +692,7 @@
   (set-internal-var 'call-depth 0)
   (set-internal-var 'max-call-depth (expt 2 10)))
 
-;; if fname is a list then it is assumed that second element
-;;    refers to a smackified function whose first parameter
-;;    is the dynamic environment.
-(defun link-smack-cl-function (fname &optional cl-name)
-  "Define a Smacklisp function as a corresponding CL function."
-  (let ((smack-name (ensure-car fname))
-        (cl-name (if (listp fname)
-                     (second fname)
-                     (if cl-name cl-name fname))))
-    (set-global-func smack-name
-                     (if (listp fname)
-                         (symbol-function cl-name)
-                         (lambda (denv &rest args)
-                           (declare (ignore denv))
-                           (apply (symbol-function cl-name) args))))))
+
 
 (defun init-smack-constant (c)
   (if (listp c)
@@ -858,22 +727,7 @@
 
 
 
-(defun load-stream (stream)
-  (unless (smackprop-p t 'global-val)
-    (init-smack-interp))
-  (with-smack-readtable ()
-    (do ((s (read stream nil :eof nil)
-            (read stream nil :eof nil)))
-        ((eq s :eof))
-      (print (interp s nil nil)))))
 
-(defun load-string (string)
-  (with-input-from-string (stream string)
-    (load-stream stream)))
-
-(defun load-file (file)
-  (with-input-from-file (stream file)
-    (load-stream stream)))
        
 
 
@@ -888,7 +742,7 @@
   (let ((l nil))
     (do-all-symbols (x) 
       (when (and (fboundp x)
-                 (eq (find-package 'common-lisp)
+                 (eq (finda-package 'common-lisp)
                      (symbol-package x))
                  ((lambda (x)
                     (and (eq (first-elt x) #\C)

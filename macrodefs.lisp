@@ -253,6 +253,8 @@
     `(block nil
        (let* ,varlist
          (tagbody ,@body))))
+  (def-smack-macro nth-value (n form) 
+    `(nth ,n (multiple-value-list ,form)))
   t)
 
 

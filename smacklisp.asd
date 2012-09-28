@@ -10,6 +10,7 @@
   :components ((:file "package")
                (:file "utils")
                (:file "smacklisp")
+               (:file "cl-functions")               
                (:file "macros")
                (:file "setf")
                (:file "macrodefs")
