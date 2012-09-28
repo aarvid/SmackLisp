@@ -1,104 +1,5 @@
 (in-package :smacklisp)
 
-
-(defmacro def-smack-cl-fun (name lambda-list)
-  (flet ((convert-parm (p)
-           (destructuring-bind (var &optional def sup)
-               (ensure-list p)
-             (case var
-               (key '(when key
-                      (lambda (x) (funcall key denv x))))
-               (predicate-1
-                `(when ,var
-                   (lambda (x) (apply ,var denv x))))
-               (predicate-2
-                `(when ,var
-                   (lambda (x y) (apply ,var denv x y))))
-               (predicate
-                `(when ,var
-                   (lambda (x &rest more) (apply ,var denv x more))))
-               (function
-                `(when ,var
-                   (lambda (&rest args) (apply ,var denv args))))
-               (test '(if test (lambda (x y) (funcall test denv x y)) #'eql))
-               (t (cond (sup `(if ,sup ,var ,def))
-                        (def `(if ,var ,var ,def))
-                        (t var)))))))
-    (multiple-value-bind (required optional rest keyword)
-        (smack-parse-lambda-list lambda-list)
-      `(defun ,(symbolicate 'smack- name) ,(cons 'denv lambda-list)
-         (,(if rest 'apply 'funcall)
-          (function ,name)
-          ,@(mapcar #'convert-parm required)
-          ,@(mapcar #'convert-parm optional)
-          ,@(mapcan (lambda (k)
-                      (list (car k) (convert-parm (cdr k))))
-                    keyword)
-          ,@rest)))))
-
-
-(def-smack-cl-fun member (item list &key key test))
-(def-smack-cl-fun member-if (predicate-1 sequence &key key))
-(def-smack-cl-fun assoc (item alist &key key test))
-(def-smack-cl-fun assoc-if (predicate-1 sequence &key key))
-(def-smack-cl-fun rassoc (item alist &key key test))
-(def-smack-cl-fun rassoc-if (predicate-1 sequence &key key))
-(def-smack-cl-fun adjoin (item alist &key key test))
-(def-smack-cl-fun notany (predicate first-seq &rest more-seqs))
-(def-smack-cl-fun every (predicate first-seq &rest more-seqs))
-(def-smack-cl-fun some (predicate first-seq &rest more-seqs))
-(def-smack-cl-fun notevery (predicate first-seq &rest more-seqs))
-(def-smack-cl-fun find (item sequence &key from-end test (start 0) end key))
-(def-smack-cl-fun find-if (predicate-1 sequence &key from-end (start 0) end key))
-(def-smack-cl-fun count (item sequence &key from-end test (start 0) end key))
-(def-smack-cl-fun count-if (predicate-1 sequence &key from-end (start 0) end key))
-(def-smack-cl-fun position (item sequence &key from-end test (start 0) end key))
-(def-smack-cl-fun position-if (predicate-1 sequence &key from-end (start 0) end key))
-(def-smack-cl-fun remove (item sequence &key from-end test (start 0) end count key))
-(def-smack-cl-fun remove-if (predicate-1 sequence &key from-end (start 0) end count key))
-(def-smack-cl-fun delete (item sequence &key from-end test (start 0) end count key))
-(def-smack-cl-fun delete-if (predicate-1 sequence &key from-end (start 0) end count key))
-(def-smack-cl-fun substitute (newitem olditem sequence &key from-end test (start 0) end count key))
-(def-smack-cl-fun substitute-if (newitem predicate-1 sequence &key from-end (start 0) end count key))
-(def-smack-cl-fun nsubstitute (newitem olditem sequence &key from-end test (start 0) end count key))
-(def-smack-cl-fun nsubstitute-if (newitem predicate-1 sequence &key from-end (start 0) end count key))
-(def-smack-cl-fun mapc (function list &rest more-lists))
-(def-smack-cl-fun mapcan (function list &rest more-lists))
-(def-smack-cl-fun mapcar (function list &rest more-lists))
-(def-smack-cl-fun mapcon (function list &rest more-lists))
-(def-smack-cl-fun mapl (function list &rest more-lists))
-(def-smack-cl-fun maplist (function list &rest more-lists))
-(def-smack-cl-fun map (result-type function first-seq &rest more-seqs))
-(def-smack-cl-fun map-into (result-sequence function &rest more-seqs))
-(def-smack-cl-fun merge (result-type sequence1 sequence2 predicate-2 &key key))
-(def-smack-cl-fun mismatch (sequence1 sequence2 &key from-end test key (start1 0) (start2 0) end1 end2))
-(def-smack-cl-fun reduce (function sequence &key key from-end (start 0) end initial-value))
-(def-smack-cl-fun remove-duplicates (sequence &key from-end test (start 0) end key))
-(def-smack-cl-fun delete-duplicates (sequence &key from-end test (start 0) end key))
-(def-smack-cl-fun search (sequence1 sequence2 &key from-end test key (start1 0) (start2 0) end1 end2))
-(def-smack-cl-fun sort (sequence predicate-2 &key key))
-(def-smack-cl-fun stable-sort (sequence predicate-2 &key key))
-(def-smack-cl-fun make-hash-table (&key test size rehash-size rehash-threshold))
-(def-smack-cl-fun maphash (function hash-table))
-
-(def-smack-cl-fun subsetp (list1 list2 &key key test))
-(def-smack-cl-fun tree-equal (tree1 tree2 &key test))
-(def-smack-cl-fun subst (new old tree &key key test))
-(def-smack-cl-fun nsubst (new old tree &key key test))
-(def-smack-cl-fun subst-if (new predicate1 tree &key test))
-(def-smack-cl-fun nsubst-if (new predicate1 tree &key test))
-(def-smack-cl-fun sublis (alist tree &key key test))
-(def-smack-cl-fun nsublis (alist tree &key key test))
-
-(def-smack-cl-fun intersection (list1 list2 &key key test))
-(def-smack-cl-fun nintersection (list1 list2 &key key test))
-(def-smack-cl-fun set-difference (list1 list2 &key key test))
-(def-smack-cl-fun nset-difference (list1 list2 &key key test))
-(def-smack-cl-fun set-exclusive-or (list1 list2 &key key test))
-(def-smack-cl-fun nset-exclusive-or (list1 list2 &key key test))
-(def-smack-cl-fun union (list1 list2 &key key test))
-(def-smack-cl-fun nunion (list1 list2 &key key test))
-
 (defparameter *smack-procs*
   '(
     ;; Evaluation and Compilation
@@ -107,10 +8,6 @@
     ;; Control and data flow    
     eq equal eql
     not
-    (notany smack-notany)
-    (some smack-some)
-    (every smack-every)
-    (notevery smack-notevery) 
     identity
     complement
     constantly
@@ -175,45 +72,16 @@
     (symbol-plist smack-symbol-plist)
     (%sys-put-prop smack-put-prop)
     (%sys-putf smack-putf)
-    (member smack-member)
-    (member-if smack-member-if)
-    (adjoin smack-adjoin)
-    (mapc smack-mapc)
-    (mapcan smack-mapcan)
-    (mapcar smack-mapcar)
-    (mapcon smack-mapcon)
-    (mapl smack-mapl)
-    (maplist smack-maplist)
     
     ;; conses - associated lists
     acons 
     copy-alist
     pairlis
-    (assoc smack-assoc)
-    (assoc-if smack-assoc-if)
-    (rassoc smack-assoc)
-    (rassoc-if smack-assoc-if)
-    
-    ;; conses - sets
-    (subsetp smack-subsetp)
-    (intersection smack-intersection)
-    (nintersection smack-nintersection)
-    (set-difference smack-set-difference)
-    (nset-difference smack-nset-difference)
-    (set-exclusive-or smack-set-exclusive-or)
-    (nset-exclusive-or smack-nset-exclusive-or)
-    (union smack-union)
-    (nunion smack-nunion)
 
+    
     ;; conses - trees
     copy-tree
-    (subst smack-subst)
-    (nsubst smack-nsubst)
-    (subst-if smack-subst-if)
-    (nsubst-if smack-nsubst-if)
-    (tree-equal smack-tree-equal)
-    (sublis smack-sublis)
-    (nsublis smack-nsublis)
+
     
     ;; arrays
     adjustable-array-p adjust-array aref array-dimension array-dimensions
@@ -239,58 +107,34 @@
     length make-sequence
     subseq 
     replace reverse nreverse
-    (merge smack-merge)
-    (mismatch smack-mismatch) 
-    (reduce smack-reduce) 
-    (remove-duplicates smack-remove-duplicates)
-    (delete-duplicates smack-delete-duplicates)
-    (search smack-search)
-    (sort smack-sort)
-    (stable-sort smack-stable-sort)
-    (count smack-count)
-    (count-if smack-count-if)
-    (find smack-find)
-    (find-if smack-find-if)
-    (position smack-position)
-    (position-if smack-position-if)
-    (remove smack-remove)
-    (remove-if smack-remove-if)
-    (delete smack-delete)
-    (delete-if smack-delete-if)
-    (substitute smack-substitute) 
-    (substitute-if smack-substitute-if)
-    (nsubstitute smack-nsubstitute)
-    (nsubstitute-if smack-nsubstitute-if)
-    (map smack-map)
-    (map-into smack-map-into)
+
     
     ;; hash tables
     clrhash gethash hash-table-count hash-table-p
     hash-table-rehash-size hash-table-rehash-threshold
     hash-table-size hash-table-test
     remhash sxhash
-    (make-hash-table smack-make-hash-table)
-    (maphash smack-maphash) 
     
     ;; reader
     ;; (read smack-read)
+
     ;; printer
     prin1 princ terpri print    
+
     ;; system construction
     (load smack-load-file)
+
     ;; environment
     decode-universal-time encode-universal-time
     get-decoded-time get-internal-real-time
     get-universal-time
     (lisp-implementation-type smack-lisp-implementation-type)
     (lisp-implementation-version smack-lisp-implementation-version)
-    ;; smacklisp extension
     
+    ;; smacklisp extension
     (%defconstant smack-defconstant)
     (%defstruct smack-defstruct)
-    (quit smack-quit))
-
-)
+    (quit smack-quit)))
 
 (defparameter *smack-constants*
   '(
@@ -314,6 +158,100 @@
     MOST-POSITIVE-SHORT-FLOAT MOST-POSITIVE-SINGLE-FLOAT MULTIPLE-VALUES-LIMIT NIL
     PI SHORT-FLOAT-EPSILON SHORT-FLOAT-NEGATIVE-EPSILON SINGLE-FLOAT-EPSILON
     SINGLE-FLOAT-NEGATIVE-EPSILON T))
+
+(defmacro def-smack-cl-fun (names lambda-list)
+  "Given a function or a list of functions with a given lambda list specification,
+   creates a function (or functions) usable in the smacklisp interpreter.
+   also specifies the link by pushing into the global variable *smack-procs*.
+   Basically handles the translation of arguments of the type function between
+   smacklisp and the underlying common lisp."
+  (flet ((convert-parm (p)
+           (destructuring-bind (var &optional def sup)
+               (ensure-list p)
+             (case var
+               (key '(when key
+                      (lambda (x) (funcall key denv x))))
+               (predicate-1
+                `(when ,var
+                   (lambda (x) (apply ,var denv x))))
+               (predicate-2
+                `(when ,var
+                   (lambda (x y) (apply ,var denv x y))))
+               (predicate
+                `(when ,var
+                   (lambda (x &rest more) (apply ,var denv x more))))
+               (function
+                `(when ,var
+                   (lambda (&rest args) (apply ,var denv args))))
+               (test '(if test (lambda (x y) (funcall test denv x y)) #'eql))
+               (t (cond (sup `(if ,sup ,var ,def))
+                        (def `(if ,var ,var ,def))
+                        (t var)))))))
+    (multiple-value-bind (required optional rest keyword)
+        (smack-parse-lambda-list lambda-list)
+      (loop with req = (mapcar #'convert-parm required)
+            and opt = (mapcar #'convert-parm optional)
+            and ky = (mapcan (lambda (k) (list (car k) (convert-parm (cdr k))))
+                             keyword)
+            for name in (ensure-list names)
+            for smack-name = (symbolicate 'smack- name)
+            collect
+            `(defun ,smack-name ,(cons 'denv lambda-list)
+               (,(if rest 'apply 'funcall)
+                (function ,name) ,@req ,@opt ,@ky ,@rest))
+              into defuns
+            collect
+            `(push (quote (,name ,smack-name))
+                   *smack-procs*)
+              into pushes
+            finally (return (append '(progn) defuns pushes))))))
+
+
+(def-smack-cl-fun (notany every some notevery)
+    (predicate first-seq &rest more-seqs))
+(def-smack-cl-fun member (item list &key key test))
+(def-smack-cl-fun (member-if assoc-if rassoc-if)
+    (predicate-1 list &key key))
+(def-smack-cl-fun (adjoin assoc rassoc)
+    (item alist &key key test))
+(def-smack-cl-fun (count find position)
+    (item sequence &key from-end test (start 0) end key))
+(def-smack-cl-fun (count-if find-if position-if)
+    (predicate-1 sequence &key from-end (start 0) end key))
+(def-smack-cl-fun (delete remove)
+    (item sequence &key from-end test (start 0) end count key))
+(def-smack-cl-fun (delete-if remove-if)
+    (predicate-1 sequence &key from-end (start 0) end count key))
+(def-smack-cl-fun (substitute nsubstitute)
+    (newitem olditem sequence &key from-end test (start 0) end count key))
+(def-smack-cl-fun (substitute-if nsubstitute-if)
+    (newitem predicate-1 sequence &key from-end (start 0) end count key))
+(def-smack-cl-fun (mapc maplist mapl mapcon mapcar mapcan)
+    (function list &rest more-lists))
+(def-smack-cl-fun map (result-type function first-seq &rest more-seqs))
+(def-smack-cl-fun map-into (result-sequence function &rest more-seqs))
+(def-smack-cl-fun merge (result-type sequence1 sequence2 predicate-2 &key key))
+(def-smack-cl-fun mismatch
+    (sequence1 sequence2 &key from-end test key (start1 0) (start2 0) end1 end2))
+(def-smack-cl-fun reduce
+    (function sequence &key key from-end (start 0) end initial-value))
+(def-smack-cl-fun (remove-duplicates delete-duplicates)
+    (sequence &key from-end test (start 0) end key))
+(def-smack-cl-fun search
+    (sequence1 sequence2 &key from-end test key (start1 0) (start2 0) end1 end2))
+(def-smack-cl-fun (sort stable-sort) (sequence predicate-2 &key key))
+(def-smack-cl-fun make-hash-table (&key test size rehash-size rehash-threshold))
+(def-smack-cl-fun maphash (function hash-table))
+(def-smack-cl-fun tree-equal (tree1 tree2 &key test))
+(def-smack-cl-fun (subst nsubst) (new old tree &key key test))
+(def-smack-cl-fun (subst-if nsubst-if) (new predicate1 tree &key key))
+(def-smack-cl-fun (sublis nsublis) (alist tree &key key test))
+(def-smack-cl-fun
+    (subsetp intersection nintersection set-difference nset-difference
+             set-exclusive-or nset-exclusive-or union nunion)
+    (list1 list2 &key key test))
+
+
 
 (defun init-smack-interp ()
   "Initialize the smacklisp interpreter with some global variables."
