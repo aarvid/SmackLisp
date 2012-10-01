@@ -6,6 +6,7 @@
                #:metabang-bind
                #:cl-ppcre
                #:trivial-timeout
+               #:iterate
                #:named-readtables)
   :components ((:file "package")
                (:file "utils")

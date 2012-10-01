@@ -189,22 +189,19 @@
                         (t var)))))))
     (multiple-value-bind (required optional rest keyword)
         (smack-parse-lambda-list lambda-list)
-      (loop with req = (mapcar #'convert-parm required)
-            and opt = (mapcar #'convert-parm optional)
-            and ky = (mapcan (lambda (k) (list (car k) (convert-parm (cdr k))))
-                             keyword)
-            for name in (ensure-list names)
-            for smack-name = (symbolicate 'smack- name)
-            collect
-            `(defun ,smack-name ,(cons 'denv lambda-list)
-               (,(if rest 'apply 'funcall)
-                (function ,name) ,@req ,@opt ,@ky ,@rest))
-              into defuns
-            collect
-            `(push (quote (,name ,smack-name))
-                   *smack-procs*)
-              into pushes
-            finally (return (append '(progn) defuns pushes))))))
+      (let ((req (mapcar #'convert-parm required))
+            (opt (mapcar #'convert-parm optional))
+            (ky (mapcan (lambda (k) (list (car k) (convert-parm (cdr k))))
+                        keyword)))
+        (cons 'progn
+              (mapcan (lambda (name)
+                        (let ((smack-name (symbolicate 'smack- name) ))
+                          `((defun ,smack-name ,(cons 'denv lambda-list)
+                              (,(if rest 'apply 'funcall)
+                               (function ,name) ,@req ,@opt ,@ky ,@rest))
+                            (push (quote (,name ,smack-name))
+                                  *smack-procs*))))
+                      (ensure-list names)))))))
 
 
 (def-smack-cl-fun (notany every some notevery)
