@@ -6,7 +6,7 @@
     (constantp smack-constantp)
 
     ;; Control and data flow    
-    eq equal eql
+    eq eql equal equalp
     not
     identity
     complement
@@ -25,6 +25,8 @@
     
     ;; symbols
     keywordp  ;; ??
+    (get smack-get)
+    (symbol-plist smack-symbol-plist)
     (boundp smack-boundp)
 
     ;; numbers
@@ -68,8 +70,6 @@
     butlast nbutlast
     revappend nreconc
     ldiff 
-    (get smack-get)
-    (symbol-plist smack-symbol-plist)
     (%sys-put-prop smack-put-prop)
     (%sys-putf smack-putf)
     
@@ -173,10 +173,10 @@
                       (lambda (x) (funcall key denv x))))
                (predicate-1
                 `(when ,var
-                   (lambda (x) (apply ,var denv x))))
+                   (lambda (x) (funcall ,var denv x))))
                (predicate-2
                 `(when ,var
-                   (lambda (x y) (apply ,var denv x y))))
+                   (lambda (x y) (funcall ,var denv x y))))
                (predicate
                 `(when ,var
                    (lambda (x &rest more) (apply ,var denv x more))))
