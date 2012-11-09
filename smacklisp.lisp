@@ -144,13 +144,14 @@
 
 (defun smack-string-simple (s &key timeout)
   "takes a string, reads it, interprets it and converts the result to a string"
-  (with-output-to-string (ss)
-    (with-smack-readtable ()
-      (let* ((*standard-output* ss)
-             (results (multiple-value-list
-                       (interp-toplevel (sl-read-from-string s)
-                                        :timeout timeout))))
-        (mapcar #'fresh-print results)))))
+  (let ((*package* (find-package :smacklisp)))
+   (with-output-to-string (ss)
+     (with-smack-readtable ()
+       (let* ((*standard-output* ss)
+              (results (multiple-value-list
+                        (interp-toplevel (sl-read-from-string s)
+                                         :timeout timeout))))
+         (mapcar #'fresh-print results))))))
 
 
 (defun smack-string (s &key timeout)
@@ -162,7 +163,8 @@
   "takes a string, reads it, interprets it and converts the result to a string"
   (let ((value-str (make-adjustable-string 0))
         (output-str (make-adjustable-string 0))
-        (success-p nil))
+        (success-p nil)
+        (*package* (find-package :smacklisp)))
     (with-output-to-string (sv value-str)
       (with-output-to-string (so output-str)
         (with-smack-readtable ()
@@ -184,18 +186,18 @@
 
 (defun smack (&key timeout)
   "A Smacklisp read-eval-print loop (using interp)"
-  (with-smack-readtable ()
-    (loop
-      (clear-input )
-      (format t "~&==> ")
-
-      (when (eq :smack-quit
-                (first (mapcar #'fresh-print
-                               (multiple-value-list
-                                (smack-error-handle
-                                 (interp-toplevel (sl-read)
-                                                  :timeout timeout))))))
-        (return "Bye")))))
+  (let ((*package* (find-package :smacklisp)))
+   (with-smack-readtable ()
+     (loop
+       (clear-input )
+       (format t "~&==> ")
+       (when (eq :smack-quit
+                 (first (mapcar #'fresh-print
+                                (multiple-value-list
+                                 (smack-error-handle
+                                  (interp-toplevel (sl-read)
+                                                   :timeout timeout))))))
+         (return "Bye"))))))
 
 
 (defmacro fresh-smack (&rest x)
