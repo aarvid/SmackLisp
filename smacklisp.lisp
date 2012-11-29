@@ -4,12 +4,10 @@
 
 ;;; "smacklisp" goes here. Hacks and glory await!
 
-(defun smack-lisp-implementation-type (denv)
-  (declare (ignore denv))
+(defun smack-lisp-implementation-type ()
   "SmackLisp")
 
-(defun smack-lisp-implementation-version (denv)
-  (declare (ignore denv))
+(defun smack-lisp-implementation-version ()
   "0.0.01")
 
 
@@ -531,17 +529,15 @@
 
 
 (defun get-global-func (symbol)
-  (unless (smack-fboundp nil symbol) 
+  (unless (smack-fboundp symbol) 
     (error "Unbound smacklisp function: ~a" symbol))
   (get-smackprop symbol 'global-func))
 
 
-(defun smack-quit (denv)
-  (declare (ignore denv))
+(defun smack-quit ()
   :smack-quit)
 
-(defun smack-constantp (denv form)
-  (declare (ignore denv))
+(defun smack-constantp (form)
   (typecase form
       ;; copied from sbcl and altered
       (symbol
@@ -550,56 +546,47 @@
        (eq (car form) 'quote))
       (t t)))
 
-(defun smack-boundp (denv symbol)
-  (declare (ignore denv))
+(defun smack-boundp (symbol)
   (smackprop-p symbol 'global-val))
       
 
-(defun smack-fboundp (denv symbol)
-  (declare (ignore denv))
+(defun smack-fboundp (symbol)
   (smackprop-p symbol 'global-func))
       
 
-(defun smack-fdefinition (denv symbol)
-  (unless (smack-fboundp denv symbol)
+(defun smack-fdefinition (symbol)
+  (unless (smack-fboundp symbol)
     (error "Unbound global smacklisp function: ~a" symbol))
   (get-global-func symbol))
 
-(defun smack-fmakunbound (denv symbol)
-  (declare (ignore denv))
+(defun smack-fmakunbound (symbol)
   (rem-smackprop symbol 'global-func))
   
 
 (defun smack-funcall (denv fn &rest args)
   (smack-apply denv fn args))
 
-(defun smack-defconstant (denv symbol val)
-  (declare (ignore denv))
+(defun smack-defconstant (symbol val)
   (rem-smackprop symbol 'constant)
   (set-global-var symbol val)
   (set-smackprop symbol 'constant t)
   symbol)
 
   
-(defun smack-random (denv limit)
-  (declare (ignore denv))
+(defun smack-random (limit)
   (random limit *smack-random-state*))
 
-(defun smack-symbol-plist (denv symbol)
-  (declare (ignore denv))
+(defun smack-symbol-plist (symbol)
   (get-smackprop symbol 'symbol-plist))
 
-(defun smack-get (denv symbol indicator &optional default)
-  (declare (ignore denv))
+(defun smack-get (symbol indicator &optional default)
   (getf (get-smackprop symbol 'symbol-plist) indicator default))
 
-(defun smack-put-prop (denv symbol indicator value)
-  (declare (ignore denv))
+(defun smack-put-prop (symbol indicator value)
   (setf (getf (get-smackprop symbol 'symbol-plist) indicator)
         value))
 
-(defun smack-putf (denv plist indicator value)
-  (declare (ignore denv))
+(defun smack-putf (plist indicator value)
   (setf (getf plist indicator) value)
   plist)
 
@@ -607,6 +594,7 @@
   (cons '&key
         (mapcar #'(lambda (s) (list (first s) (second s))) 
                 slots)))
+
 (defun make-body (internal-name slots)
   (list (apply #'append (list internal-name)
                (mapcar (lambda (s) (list (force-keyword (car s)) (car s)))
@@ -620,8 +608,8 @@
      (make-function (make-parms slots) (make-body imake slots) nil nil))
     (link-smack-cl-function imake imake)))
 
-(defun  smack-defstruct (denv name options slots)
-  (declare (ignore options denv))
+(defun  smack-defstruct ( name options slots)
+  (declare (ignore options))
   (let* ((simple-slots (mapcar #'car slots))
          (internal-name (gensym (string name))))
     (eval `(defstruct ,internal-name ,@simple-slots))
@@ -672,8 +660,7 @@
   (with-input-from-file (stream file)
     (load-stream stream :print print)))
 
-(defun smack-load-file (denv file &key print)
-  (declare (ignore denv))
+(defun smack-load-file (file &key print)
   (load-file file :print print))
 
 
@@ -698,8 +685,8 @@
 
 (defun init-smack-constant (c)
   (if (listp c)
-      (smack-defconstant nil (first c) (symbol-value (second c)))
-      (smack-defconstant nil c (symbol-value c))))
+      (smack-defconstant (first c) (symbol-value (second c)))
+      (smack-defconstant c (symbol-value c))))
 
 (defun fresh-print (object &optional stream)
   (let ((stream (cond ((null stream) *standard-output*)

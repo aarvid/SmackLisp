@@ -17,8 +17,8 @@
     (fboundp smack-fboundp)
     (fdefinition smack-fdefinition)
     (fmakunbound smack-fmakunbound)
-    (apply smack-apply)
-    (funcall smack-funcall)
+    (apply smack-apply :denv t)
+    (funcall smack-funcall :denv t)
     
     ;; structures
     copy-structure
@@ -199,7 +199,7 @@
                           `((defun ,smack-name ,(cons 'denv lambda-list)
                               (,(if rest 'apply 'funcall)
                                (function ,name) ,@req ,@opt ,@ky ,@rest))
-                            (push (quote (,name ,smack-name))
+                            (push (quote (,name ,smack-name :denv t))
                                   *smack-procs*))))
                       (ensure-list names)))))))
 
@@ -270,9 +270,11 @@
   (let ((smack-name (ensure-car fname))
         (cl-name (if (listp fname)
                      (second fname)
-                     (if cl-name cl-name fname))))
+                     (if cl-name cl-name fname)))
+        (denv-p (if (listp fname)
+                    (getf (cddr fname) :denv )) ))
     (set-global-func smack-name
-                     (if (listp fname)
+                     (if denv-p 
                          (symbol-function cl-name)
                          (lambda (denv &rest args)
                            (declare (ignore denv))
