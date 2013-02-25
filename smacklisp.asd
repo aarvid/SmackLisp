@@ -2,6 +2,9 @@
 
 (asdf:defsystem #:smacklisp
   :serial t
+  :description "A common-lisp interpreter to run inside common lisp"
+  :author "Andy Peterson <andy.arvid@gmail.com>"
+  :license "MIT"
   :depends-on (#:alexandria
                #:metabang-bind
                #:cl-ppcre
@@ -16,5 +19,6 @@
                (:file "setf")
                (:file "macrodefs")
                (:file "setfdefs")               
+               ;;(:file "puny-clos")
                ))
 
