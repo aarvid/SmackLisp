@@ -64,7 +64,7 @@
   (def-smack-macro cond (&rest clauses)
     (cond ((null clauses) nil)
           ((singlep (first clauses))
-           `(or ,(first clauses) (cond .,(rest clauses))))
+           `(or ,(first (first clauses)) (cond .,(rest clauses))))
           ((starts-with (first clauses) 'else)
            `(progn .,(rest (first clauses))))
           (t `(if ,(first (first clauses))
@@ -76,9 +76,10 @@
       `(let ((,key-val ,key))
          (cond ,@(mapcar
                   #'(lambda (clause)
-                      (if (starts-with clause 'else)
-                          clause
-                          `((member ,key-val ',(first clause))
+                      (if (or (starts-with 'otherwise clause)
+                              (starts-with t clause))
+                          `(t .,(rest clause))
+                          `((member ,key-val ',(ensure-list (first clause)))
                             .,(rest clause))))
                   clauses)))))
 
