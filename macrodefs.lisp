@@ -38,6 +38,10 @@
 
 
 (defun initialize-system-macros ()
+  #|(def-smack-macro defun (name lambda-list &rest body)
+    (defun    (set-global-func ;; should be macro
+                    (second x)
+                    (make-function (third x) (cdddr x) env fenv))))|#
   (def-smack-macro let (bindings &rest body)
     `((lambda ,(mapcar #'first bindings) . ,body)
       .,(mapcar #'second bindings)))

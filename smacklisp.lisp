@@ -70,7 +70,7 @@
     ((symbolp x) (get-var x env denv))    
     ((atom x) x)
     ((smack-macro (first x))              
-     (interp (smack-macro-expand x) env fenv denv))
+     (interp (smack-macro-expand x env fenv denv) env fenv denv))
     (t (case (first x)
          (quote    (second x))
          (progn    (smack-progn (rest x) env fenv denv))
@@ -80,9 +80,8 @@
                        (interp (fourth x) env fenv denv)))
          (lambda   (make-function
                     (second x) (cddr x) env fenv))
-         (defun    (set-global-func ;; should be macro
-                    (second x)
-                    (make-function (third x) (cdddr x) env fenv)))
+         (defun    (smack-defun (second x) (third x) (cdddr x)
+                                env fenv denv))
          (function (smack-function (second x) env fenv denv))
          (flet     (smack-flet (second x) (cddr x) env fenv denv))
          (labels   (smack-labels (second x) (cddr x) env fenv denv))
@@ -93,13 +92,20 @@
           (smack-return-from (second x) (third x) env fenv denv))
          (tagbody  (smack-tagbody (rest x) env fenv denv))
          (go       (smack-go (rest x) env fenv denv))
-          
          (t        (apply-function (first x)
                                    (interp-list (rest x) env fenv denv)
                                    env
                                    fenv
                                    denv))))))
 
+;; technically should be a macro not a special operation.
+(defun smack-defun (name lambda-list body env fenv denv)
+  (declare (ignore denv))
+  (unless (symbolp name)
+    (error "Name of function needs to be a symbol"))
+  (set-global-func name
+                   (make-function lambda-list body env fenv))
+  name)
 
 (defun interp-toplevel (x &key timeout)
   (unless (smackprop-p t 'global-val)
